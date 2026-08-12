@@ -57,7 +57,7 @@ The dashboard also includes weather analysis cards, rain and snow timing, pollut
 Open `weather-intelligence-platform.html` in a browser.
 or click the link below 
 
-Live:https://kuhemmanuel9-sudo.github.io/Weather-Intelligence-2.0-by-Emmanuel-Kuh-/
+Live:  https://kuhemmanuel9-sudo.github.io/Weather-Intelligence-2.0-by-Emmanuel-Kuh-/
 
 No build step is required. The project is a single HTML file, so the HTML, CSS, and JavaScript are all included in one place.
 
