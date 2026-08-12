@@ -35,9 +35,10 @@ The dashboard also includes weather analysis cards, rain and snow timing, pollut
 21. Compare two cities
 22. Save favorite locations with local storage
 23. Voice language choices with clear regional labels, including English, Asante Twi, Akuapem Twi, Spanish, Italian, French, Portuguese, German, Arabic, Hindi, Chinese, Japanese, Korean, and Swahili
-24. Light and dark themes
-25. Fahrenheit and Celsius support
-26. Responsive layout for desktop and mobile
+24. Installed browser voice picker so users can choose the most natural native voice available on their device
+25. Light and dark themes
+26. Fahrenheit and Celsius support
+27. Responsive layout for desktop and mobile
 
 ## Built With
 
@@ -82,7 +83,7 @@ Map tiles come from OpenStreetMap contributors.
 
 This project runs fully in the browser. It does not use a backend, database, account system, or paid API key.
 
-Some features depend on browser permissions or data availability. Current location requires the user to allow location access, voice briefings use the browser speech feature, worldwide place coverage depends on the geocoding provider, 15-minute snow and rain timing depends on the forecast model, and NOAA alerts are focused on United States locations. The app prepares Twi text for Asante Twi and Akuapem Twi, but the spoken voice still depends on whether the user's browser or device has a matching Twi voice installed.
+Some features depend on browser permissions or data availability. Current location requires the user to allow location access, voice briefings use the browser speech feature, worldwide place coverage depends on the geocoding provider, 15-minute snow and rain timing depends on the forecast model, and NOAA alerts are focused on United States locations. The app prepares more natural speech text for Asante Twi, Akuapem Twi, and other languages, then uses the closest installed browser voice; for true native Twi audio, the user's device or browser must have a Twi or Akan voice installed.
 
 ## Author
 
