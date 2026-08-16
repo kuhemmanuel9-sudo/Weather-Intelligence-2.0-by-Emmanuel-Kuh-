@@ -1004,46 +1004,5 @@
 </head>
 <body>
   <!-- (rest of the existing HTML remains unchanged) -->
-
-  <!-- RAIN MESSAGE HELPER: updates the UI to show "It's raining here" when appropriate -->
-  <script>
-  (function(){
-    const RAIN_THRESHOLD = 50; // percent threshold to treat as "raining"
-
-    function normalizeProb(p) {
-      if (p == null) return 0;
-      const n = Number(p);
-      if (isNaN(n)) return 0;
-      return n <= 1 ? Math.round(n * 100) : Math.round(n);
-    }
-
-    function updateRainMessage(weather) {
-      try {
-        const msgEl = document.querySelector('.condition') || document.getElementById('weather-message');
-        if (!msgEl) return;
-
-        const precipProb = normalizeProb(weather && (weather.precipProbability ?? weather.precipProb ?? weather.precip))
-        const desc = ((weather && (weather.summary || weather.description)) || '').toString().toLowerCase();
-
-        if (precipProb >= RAIN_THRESHOLD || desc.includes('rain')) {
-          msgEl.textContent = "It's raining here";
-          document.body.setAttribute('data-weather','rain');
-        } else if (precipProb > 0) {
-          msgEl.textContent = `Chance of rain: ${precipProb}%`;
-        }
-      } catch (e) {
-        // silent fail
-        console.error('updateRainMessage error', e);
-      }
-    }
-
-    // expose for existing code to call
-    window.updateRainMessage = updateRainMessage;
-
-    // If a global weather object already exists, try to call it
-    if (window.weather) updateRainMessage(window.weather);
-    if (window.weatherData) updateRainMessage(window.weatherData);
-  })();
-  </script>
 </body>
 </html>
