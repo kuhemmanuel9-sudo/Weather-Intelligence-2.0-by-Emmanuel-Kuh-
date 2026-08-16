@@ -62,14 +62,7 @@ No build step is required. The project is a single HTML file, so the HTML, CSS, 
 
 For the best experience, use a modern browser such as Chrome, Edge, Firefox, or Safari.
 
-## Project Files
 
-```text
-weather-intelligence-platform.html
-README.md
-```
-
-The HTML file contains the full application. The README explains the project for GitHub visitors.
 
 ## Data Sources
 
