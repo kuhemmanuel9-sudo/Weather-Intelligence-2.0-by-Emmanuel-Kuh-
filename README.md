@@ -54,8 +54,7 @@ The dashboard also includes weather analysis cards, rain and snow timing, pollut
 
 ## How To Run It
 
-Open `weather-intelligence-platform.html` in a browser.
-or click the link below 
+ click the link below 
 
 Live:  https://kuhemmanuel9-sudo.github.io/Weather-Intelligence-2.0-by-Emmanuel-Kuh-/
 
