@@ -2548,8 +2548,11 @@
         ].filter(Boolean).join(" | ");
         elements.dataSource.textContent = "Open Meteo";
         elements.currentTemp.innerHTML = formatTemp(current.temperature_2m);
-        elements.currentCondition.textContent = weatherDescription(current.weather_code);
-        elements.body.dataset.weather = weatherMood(current.weather_code);
+        const rainNow = currentRainStatus();
+        elements.currentCondition.textContent = rainNow.isRaining
+          ? rainNow.label + " - " + weatherDescription(current.weather_code)
+          : weatherDescription(current.weather_code);
+        elements.body.dataset.weather = rainNow.isRaining ? "rain" : weatherMood(current.weather_code);
         elements.feelsLike.innerHTML = "Feels like " + formatTemp(current.apparent_temperature);
         elements.humidityValue.textContent = formatPercent(current.relative_humidity_2m);
         elements.windValue.textContent = formatNumber(current.wind_speed_10m, 0) + " " + windUnit;
@@ -2577,14 +2580,17 @@
         const hourly = forecast.hourly || {};
         const currentAqi = state.air && state.air.current ? state.air.current.us_aqi : null;
         const nextRain = maxOfFirst(hourly.precipitation_probability, 24);
+        const rainNow = currentRainStatus();
         const snowNowcast = buildSnowNowcast();
         const uv = valueAt(daily.uv_index_max, 0);
         const alertsCount = state.alerts.length;
         const bestWindow = findBestOutdoorWindow();
         const currentRisk = hourlyRisk(0);
 
-        elements.rainMetric.textContent = isValue(nextRain) ? Math.round(nextRain) + "%" : "--";
-        elements.rainMetricText.textContent = rainText(nextRain);
+        elements.rainMetric.textContent = rainNow.isRaining ? "Now" : isValue(nextRain) ? Math.round(nextRain) + "%" : "--";
+        elements.rainMetricText.textContent = rainNow.isRaining
+          ? rainNow.detail + ". Next 24h chance " + (isValue(nextRain) ? Math.round(nextRain) + "%" : "unavailable") + "."
+          : rainText(nextRain);
         elements.snowMetric.textContent = snowNowcast.hasSnow ? formatSnow(snowNowcast.total) : "Low";
         elements.snowMetricText.textContent = snowNowcast.hasSnow
           ? "Possible around " + snowNowcast.firstTime
@@ -2609,6 +2615,7 @@
         const current = state.forecast.current || {};
         const analysis = buildAnalysis();
         const rain = maxOfFirst(state.forecast.hourly && state.forecast.hourly.precipitation_probability, 24);
+        const rainNow = currentRainStatus();
         const snow = buildSnowNowcast();
         const outdoor = analysis.find((item) => item.key === "outdoor");
         const travel = analysis.find((item) => item.key === "travel");
@@ -2618,7 +2625,7 @@
         elements.execTemp.innerHTML = formatTemp(current.temperature_2m);
         elements.execOutdoor.textContent = outdoor ? Math.round(outdoor.score) : "--";
         elements.execTravel.textContent = travel ? Math.round(travel.score) : "--";
-        elements.execRain.textContent = isValue(rain) ? Math.round(rain) + "%" : "--";
+        elements.execRain.textContent = rainNow.isRaining ? "Now" : isValue(rain) ? Math.round(rain) + "%" : "--";
         elements.execSnow.textContent = snow.hasSnow ? formatSnow(snow.total) : "Low";
         elements.execStorm.textContent = storm ? riskWord(storm.score) : "--";
       }
@@ -2642,6 +2649,7 @@
         const times = hourly.time || [];
         const probabilities = hourly.precipitation_probability || [];
         const precipitation = hourly.precipitation || [];
+        const rainNow = currentRainStatus();
         const slots = [];
 
         for (let index = 0; index < Math.min(8, times.length); index += 1) {
@@ -2656,7 +2664,12 @@
         const total = slots.reduce((sum, slot) => sum + slot.precipitation, 0);
         const heavy = slots.find((slot) => slot.probability >= 70 || slot.precipitation >= (state.units === "fahrenheit" ? 0.08 : 2));
         let summary = "Rain is unlikely in the next several hours based on the current forecast.";
-        if (startIndex >= 0) {
+        if (rainNow.isRaining) {
+          summary = rainNow.detail + ". This is current observed precipitation, not only a probability. ";
+          if (isValue(probabilities[0])) summary += "The next-hour rain chance is " + Math.round(probabilities[0]) + "%. ";
+          if (heavy) summary += "The strongest rain signal appears near " + heavy.time + ". ";
+          summary += "Estimated accumulation across this window is " + formatPrecip(total) + ".";
+        } else if (startIndex >= 0) {
           const start = slots[startIndex];
           summary = "Rain may begin around " + start.time + ". ";
           if (heavy) summary += "The strongest rain signal appears near " + heavy.time + ". ";
@@ -2666,8 +2679,8 @@
         return {
           summary,
           slots,
-          hasRain: startIndex >= 0,
-          firstTime: startIndex >= 0 ? slots[startIndex].time : "--",
+          hasRain: rainNow.isRaining || startIndex >= 0,
+          firstTime: rainNow.isRaining ? "Now" : startIndex >= 0 ? slots[startIndex].time : "--",
           heavyTime: heavy ? heavy.time : "--",
           total
         };
@@ -2809,6 +2822,7 @@
         const hourly = state.forecast.hourly || {};
         const rain = maxOfFirst(hourly.precipitation_probability, 24);
         const snow = buildSnowNowcast();
+        const rainNow = currentRainStatus();
         const aqi = state.air && state.air.current ? state.air.current.us_aqi : null;
         const temp = current.temperature_2m;
         const wind = current.wind_speed_10m;
@@ -2821,6 +2835,9 @@
         if (alerts > 0) {
           tone = "danger";
           message = "There is an active weather alert for this area. Review the alert details before travel and keep your plans flexible.";
+        } else if (rainNow.isRaining) {
+          tone = "warning";
+          message = rainNow.detail + ". It is raining right now, so use the current rain status first and treat the percentage as the forecast chance for later.";
         } else if (storm && storm.score >= 60) {
           tone = "danger";
           message = "Storm risk is elevated today. Plan around possible rain, stronger wind, and slower travel.";
@@ -2902,10 +2919,12 @@
         const heavySnow = snowNowcast.hasSnow && (snowNowcast.maxAmount >= snowNowcast.heavyThreshold || snowNowcast.total >= snowNowcast.heavyThreshold * 2);
         const snowNearFreezing = snowNowcast.hasSnow && (!isValue(temp) || temp <= freezing + (state.units === "fahrenheit" ? 5 : 3));
         const condition = weatherDescription(current.weather_code);
+        const rainNow = currentRainStatus();
         const location = locationLabel(state.location);
         const tempText = isValue(temp) ? Math.round(temp) + " degrees " + tempSymbol() : "temperature unavailable";
         const feelsLikeText = isValue(current.apparent_temperature) ? Math.round(current.apparent_temperature) + " degrees " + tempSymbol() : "unavailable";
         const rainTextValue = isValue(rain) ? Math.round(rain) + " percent" : "unavailable";
+        const rainNowTextValue = rainNow.isRaining ? rainNow.detail : "Not raining now";
         const snowTextValue = snowNowcast.hasSnow ? snowNowcast.summary : "No short-term snow signal";
         const windTextValue = isValue(wind) ? Math.round(wind) + " " + windSymbol() : "unavailable";
         const gustTextValue = isValue(gust) ? Math.round(gust) + " " + windSymbol() : "unavailable";
@@ -2915,6 +2934,7 @@
           { label: "Location", value: location },
           { label: "Condition", value: condition },
           { label: "Temperature", value: stripHtml(formatTemp(temp)) + ", feels like " + stripHtml(formatTemp(current.apparent_temperature)) },
+          { label: "Rain Now", value: rainNowTextValue },
           { label: "Rain Chance", value: rainTextValue },
           { label: "Snow Timing", value: snowTextValue },
           { label: "Wind", value: windTextValue + ", gusts " + gustTextValue },
@@ -2926,6 +2946,7 @@
         const factSentence = "For " + location + ", current conditions are " + condition.toLowerCase() +
           ". Temperature is " + tempText +
           ", feels like " + feelsLikeText +
+          ". Current rain status: " + rainNowTextValue +
           ". Rain chance in the next 6 hours is " + rainTextValue +
           ". Snow timing: " + snowTextValue +
           ". Wind is " + windTextValue +
@@ -2963,14 +2984,18 @@
           phrase = "It is not safe to be outdoors for long";
           detail = "The warning is based on heat, air quality, freezing conditions, or weather that can affect health outdoors.";
           reason = "It is not safe to be outdoors for long because heat, air quality, or freezing weather may affect health.";
-        } else if (maxNextSix >= 45 || rain >= 40 || snowNowcast.hasSnow || wind >= (state.units === "fahrenheit" ? 18 : 29) || uv >= 7 || (isValue(aqi) && aqi >= 101)) {
+        } else if (rainNow.isRaining || maxNextSix >= 45 || rain >= 40 || snowNowcast.hasSnow || wind >= (state.units === "fahrenheit" ? 18 : 29) || uv >= 7 || (isValue(aqi) && aqi >= 101)) {
           level = "watch";
           levelLabel = "Watch";
           phrase = "Use caution outside";
-          detail = "The watch is based on moderate rain chance, snow signal, wind, sun exposure, air quality, or the short-term risk timeline.";
+          detail = rainNow.isRaining
+            ? rainNow.detail + ". The app is showing current rain separately from rain probability."
+            : "The watch is based on moderate rain chance, snow signal, wind, sun exposure, air quality, or the short-term risk timeline.";
           reason = snowNowcast.hasSnow
             ? "Use caution outside because snow is possible around " + snowNowcast.firstTime + "."
-            : "Use caution outside because one or more forecast values are in a watch range.";
+            : rainNow.isRaining
+              ? "Use caution outside because rain is falling now."
+              : "Use caution outside because one or more forecast values are in a watch range.";
         }
 
         const voice = {
@@ -2978,6 +3003,7 @@
           condition,
           tempText,
           feelsLikeText,
+          rainNowTextValue,
           rainTextValue,
           snowTextValue,
           windTextValue,
@@ -3057,6 +3083,9 @@
         const hourly = state.forecast.hourly || {};
         const code = valueAt(hourly.weather_code, index);
         const rain = valueAt(hourly.precipitation_probability, index) || 0;
+        const precipitation = valueAt(hourly.precipitation, index) || 0;
+        const rainAmount = Number(precipitation);
+        const currentRain = index === 0 ? currentRainStatus() : { isRaining: false };
         const snow = valueAt(hourly.snowfall, index) || 0;
         const gust = valueAt(hourly.wind_gusts_10m, index) || valueAt(hourly.wind_speed_10m, index) || 0;
         const temp = valueAt(hourly.temperature_2m, index);
@@ -3072,7 +3101,12 @@
         const snowSignal = Number(snow) > 0 || isSnowCode(code);
         const snowRisk = snowSignal ? Math.min(42, 14 + (Number(snow) / Math.max(snowHeavyThreshold(false), 0.01)) * 20) : 0;
         const freezingSnowRisk = snowSignal && isValue(temp) && temp <= (state.units === "fahrenheit" ? 35 : 2) ? 12 : 0;
-        return clamp(rain * 0.52 + snowRisk + freezingSnowRisk + windRisk + tempRisk + airRisk + alertRisk + (severeCode ? 35 : 0), 0, 100);
+        const activeRain = currentRain.isRaining || isRainCode(code) || (Number.isFinite(rainAmount) && rainAmount > 0);
+        const rainAmountRisk = activeRain && Number.isFinite(rainAmount)
+          ? Math.min(30, 12 + (rainAmount / (state.units === "fahrenheit" ? 0.08 : 2)) * 18)
+          : 0;
+        const rainRisk = activeRain ? Math.max(rain * 0.52, rainAmountRisk, 24) : rain * 0.52;
+        return clamp(rainRisk + snowRisk + freezingSnowRisk + windRisk + tempRisk + airRisk + alertRisk + (severeCode ? 35 : 0), 0, 100);
       }
 
       function renderAnalysis() {
@@ -3097,14 +3131,17 @@
         const daily = forecast.daily || {};
         const aqi = state.air && state.air.current ? state.air.current.us_aqi : null;
         const rain = maxOfFirst(hourly.precipitation_probability, 24) || 0;
+        const rainNow = currentRainStatus();
+        const effectiveRain = rainNow.isRaining ? Math.max(rain, 82) : rain;
         const wind = current.wind_speed_10m || 0;
         const gust = current.wind_gusts_10m || wind;
         const temp = current.temperature_2m;
         const clouds = current.cloud_cover || 0;
         const uv = valueAt(daily.uv_index_max, 0) || 0;
-        const todayRain = valueAt(daily.precipitation_probability_max, 0) || rain;
+        const todayRain = rainNow.isRaining ? Math.max(valueAt(daily.precipitation_probability_max, 0) || rain, 82) : valueAt(daily.precipitation_probability_max, 0) || rain;
         const snowNowcast = buildSnowNowcast();
         const alertPenalty = Math.min(state.alerts.length * 25, 50);
+        const activeRainPenalty = rainNow.isRaining ? 14 : 0;
 
         const comfortableLow = state.units === "fahrenheit" ? 55 : 13;
         const comfortableHigh = state.units === "fahrenheit" ? 82 : 28;
@@ -3123,22 +3160,22 @@
           ? Math.min(38, 12 + (snowNowcast.total / Math.max(snowNowcast.heavyThreshold, 0.01)) * 12)
           : 0;
 
-        const outdoor = clamp(100 - tempPenalty - rain * 0.32 - snowPenalty - Math.max(0, wind - 12) * 1.2 - aqiPenalty - alertPenalty, 0, 100);
-        const travel = clamp(100 - rain * 0.28 - snowPenalty * 1.25 - Math.max(0, gust - 20) * 1.5 - alertPenalty - (severeCode ? 25 : 0), 0, 100);
-        const running = clamp(100 - tempPenalty * 1.3 - rain * 0.28 - snowPenalty * 0.8 - Math.max(0, wind - 15) * 1.4 - aqiPenalty * 1.2, 0, 100);
-        const cycling = clamp(100 - tempPenalty - rain * 0.34 - snowPenalty * 1.2 - Math.max(0, gust - 18) * 1.7 - aqiPenalty, 0, 100);
+        const outdoor = clamp(100 - tempPenalty - effectiveRain * 0.32 - activeRainPenalty - snowPenalty - Math.max(0, wind - 12) * 1.2 - aqiPenalty - alertPenalty, 0, 100);
+        const travel = clamp(100 - effectiveRain * 0.28 - activeRainPenalty * 0.7 - snowPenalty * 1.25 - Math.max(0, gust - 20) * 1.5 - alertPenalty - (severeCode ? 25 : 0), 0, 100);
+        const running = clamp(100 - tempPenalty * 1.3 - effectiveRain * 0.28 - activeRainPenalty - snowPenalty * 0.8 - Math.max(0, wind - 15) * 1.4 - aqiPenalty * 1.2, 0, 100);
+        const cycling = clamp(100 - tempPenalty - effectiveRain * 0.34 - activeRainPenalty - snowPenalty * 1.2 - Math.max(0, gust - 18) * 1.7 - aqiPenalty, 0, 100);
         const beachLow = state.units === "fahrenheit" ? 72 : 22;
-        const beach = clamp(100 - Math.max(0, beachLow - (isValue(temp) ? temp : beachLow)) * 1.6 - Math.max(0, (isValue(temp) ? temp : beachLow) - hot) * 1.8 - rain * 0.45 - snowPenalty - Math.max(0, wind - 18) * 1.4 + uv * 2, 0, 100);
-        const driving = clamp(100 - rain * 0.35 - snowPenalty * 1.45 - Math.max(0, gust - 24) * 1.8 - alertPenalty - (severeCode ? 28 : 0), 0, 100);
+        const beach = clamp(100 - Math.max(0, beachLow - (isValue(temp) ? temp : beachLow)) * 1.6 - Math.max(0, (isValue(temp) ? temp : beachLow) - hot) * 1.8 - effectiveRain * 0.45 - activeRainPenalty - snowPenalty - Math.max(0, wind - 18) * 1.4 + uv * 2, 0, 100);
+        const driving = clamp(100 - effectiveRain * 0.35 - activeRainPenalty * 0.8 - snowPenalty * 1.45 - Math.max(0, gust - 24) * 1.8 - alertPenalty - (severeCode ? 28 : 0), 0, 100);
         const gardening = clamp(100 - Math.abs((isValue(temp) ? temp : comfortableHigh) - comfortableHigh) * 1.2 - Math.max(0, wind - 20) * 1.1 - (todayRain > 80 ? 18 : 0), 0, 100);
-        const photography = clamp(100 - clouds * 0.36 - rain * 0.25 - Math.max(0, wind - 20) * 1.1 + (uv >= 2 && uv <= 6 ? 10 : 0), 0, 100);
-        const stargazing = clamp(100 - clouds * 0.85 - rain * 0.45 - Math.max(0, wind - 18) * 0.9, 0, 100);
-        const flightDelay = clamp(rain * 0.42 + snowPenalty * 1.1 + Math.max(0, gust - 25) * 1.4 + (severeCode ? 28 : 0) + alertPenalty, 0, 100);
+        const photography = clamp(100 - clouds * 0.36 - effectiveRain * 0.25 - activeRainPenalty * 0.5 - Math.max(0, wind - 20) * 1.1 + (uv >= 2 && uv <= 6 ? 10 : 0), 0, 100);
+        const stargazing = clamp(100 - clouds * 0.85 - effectiveRain * 0.45 - activeRainPenalty - Math.max(0, wind - 18) * 0.9, 0, 100);
+        const flightDelay = clamp(effectiveRain * 0.42 + activeRainPenalty * 0.5 + snowPenalty * 1.1 + Math.max(0, gust - 25) * 1.4 + (severeCode ? 28 : 0) + alertPenalty, 0, 100);
         const heatStress = isValue(temp) ? clamp((temp - hot) * 6 + uv * 4 + Math.max(0, (aqi || 0) - 100) * 0.1, 0, 100) : 0;
-        const frostRisk = isValue(temp) ? clamp((cold - temp) * 10 + rain * 0.15 + snowPenalty, 0, 100) : snowPenalty;
+        const frostRisk = isValue(temp) ? clamp((cold - temp) * 10 + effectiveRain * 0.15 + snowPenalty, 0, 100) : snowPenalty;
         const airScore = isValue(aqi) ? clamp(100 - aqi * 0.5, 0, 100) : 65;
         const solar = clamp(100 - clouds * 0.7 + uv * 2, 0, 100);
-        const stormRisk = clamp(rain * 0.45 + Math.max(0, gust - strongWind) * 1.8 + (severeCode ? 35 : 0) + alertPenalty, 0, 100);
+        const stormRisk = clamp(effectiveRain * 0.45 + activeRainPenalty * 0.4 + Math.max(0, gust - strongWind) * 1.8 + (severeCode ? 35 : 0) + alertPenalty, 0, 100);
         const snowScore = snowNowcast.hasSnow ? clamp(100 - snowPenalty * 1.9, 0, 100) : 100;
 
         return [
@@ -3933,6 +3970,7 @@
           condition: "test conditions",
           tempText: "72 degrees " + tempSymbol(),
           feelsLikeText: "72 degrees " + tempSymbol(),
+          rainNowTextValue: "Not raining now",
           rainTextValue: "10 percent",
           snowTextValue: "No short-term snow signal",
           windTextValue: "5 " + windSymbol(),
@@ -3964,6 +4002,7 @@
             "Weather briefing for " + data.location + ".",
             "Right now it is " + text.condition + ".",
             "The temperature is " + data.tempText + ", and it feels like " + data.feelsLikeText + ".",
+            "Current rain status: " + (data.rainNowTextValue || "not available") + ".",
             "Rain chance for the next 6 hours is " + data.rainTextValue + ".",
             text.rainTiming,
             text.snowTiming,
@@ -4638,6 +4677,53 @@
         return risk;
       }
 
+      function currentRainStatus() {
+        const forecast = state.forecast || {};
+        const current = forecast.current || {};
+        const minutely = forecast.minutely_15 || {};
+        const hourly = forecast.hourly || {};
+        const threshold = state.units === "fahrenheit" ? 0.001 : 0.05;
+        const heavyThreshold = state.units === "fahrenheit" ? 0.08 : 2;
+        const moderateThreshold = state.units === "fahrenheit" ? 0.03 : 0.8;
+        const rainValues = [
+          current.rain,
+          current.precipitation,
+          valueAt(minutely.rain, 0),
+          valueAt(minutely.precipitation, 0),
+          valueAt(hourly.rain, 0),
+          valueAt(hourly.precipitation, 0)
+        ].filter(isValue).map(Number);
+        const snowValues = [
+          current.snowfall,
+          valueAt(minutely.snowfall, 0),
+          valueAt(hourly.snowfall, 0)
+        ].filter(isValue).map(Number);
+        const amount = rainValues.length ? Math.max(...rainValues) : 0;
+        const snowAmount = snowValues.length ? Math.max(...snowValues) : 0;
+        const code = Number(current.weather_code);
+        const codeSaysRain = isRainCode(code) || [95, 96, 99].includes(code);
+        const measuredRain = amount >= threshold && snowAmount < threshold;
+        const isRaining = measuredRain || codeSaysRain;
+        const intensity = amount >= heavyThreshold
+          ? "Heavy rain now"
+          : amount >= moderateThreshold
+            ? "Moderate rain now"
+            : "Raining now";
+        const detail = isRaining
+          ? measuredRain
+            ? intensity + " - observed precipitation is " + formatPrecip(amount)
+            : "Raining now - current condition reports " + weatherDescription(code).toLowerCase()
+          : "Not raining now";
+
+        return {
+          isRaining,
+          amount,
+          snowAmount,
+          label: isRaining ? intensity : "Not raining now",
+          detail
+        };
+      }
+
       function weatherDescription(code) {
         const descriptions = {
           0: "Clear sky",
@@ -4679,6 +4765,10 @@
         if ([71, 73, 75, 77, 85, 86].includes(value)) return "snow";
         if ([0, 1].includes(value)) return "sun";
         return "cloud";
+      }
+
+      function isRainCode(code) {
+        return [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(Number(code));
       }
 
       function isSnowCode(code) {
